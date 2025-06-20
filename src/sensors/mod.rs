@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use anyhow::Result;
 use cooling_profile::{CoolingProfileConfig, CoolingProfileInfo};
 use intel_gpu::{GpuConfig, GpuInfo};
@@ -43,14 +45,23 @@ impl SensorInfo {
 		Ok(())
 	}
 }
-impl From<SensorInfo> for SensorConfig {
-	fn from(value: SensorInfo) -> Self {
-		Self {
-			rapl: value.rapl.into_iter().map(Into::into).collect(),
-			pstate: value.pstate.into(),
-			gpus: value.gpus.into_iter().map(Into::into).collect(),
-			cooling: value.cooling.into(),
+impl Display for SensorInfo {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		writeln!(f, "RAPL zones:")?;
+		for zone in &self.rapl {
+			writeln!(f, "{zone}")?;
 		}
+
+		writeln!(f, "{}", self.pstate)?;
+
+		writeln!(f, "GPUs:")?;
+		for gpu in &self.gpus {
+			writeln!(f, "{gpu}")?;
+		}
+
+		writeln!(f, "\n{}", self.cooling)?;
+
+		Ok(())
 	}
 }
 
@@ -76,5 +87,15 @@ impl SensorConfig {
 		self.cooling.apply(&mut info.cooling)?;
 
 		Ok(())
+	}
+}
+impl From<SensorInfo> for SensorConfig {
+	fn from(value: SensorInfo) -> Self {
+		Self {
+			rapl: value.rapl.into_iter().map(Into::into).collect(),
+			pstate: value.pstate.into(),
+			gpus: value.gpus.into_iter().map(Into::into).collect(),
+			cooling: value.cooling.into(),
+		}
 	}
 }

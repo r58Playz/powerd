@@ -43,11 +43,11 @@ impl PstateCpuInfo {
 		}))
 	}
 
-	fn write_min_max(&self, root: &Path) -> Result<()> {
-		sysfs_write(&root.join("scaling_min_freq"), self.min_freq)?;
-		sysfs_write(&root.join("scaling_max_freq"), self.max_freq)?;
-
-		Ok(())
+	fn write_min(&self, root: &Path) -> Result<()> {
+		sysfs_write(&root.join("scaling_min_freq"), self.min_freq)
+	}
+	fn write_max(&self, root: &Path) -> Result<()> {
+		sysfs_write(&root.join("scaling_max_freq"), self.max_freq)
 	}
 
 	fn write(&self) -> Result<()> {
@@ -56,10 +56,11 @@ impl PstateCpuInfo {
 		sysfs_write(&root.join("scaling_governor"), &self.governor)?;
 		sysfs_write(&root.join("energy_performance_preference"), &self.epp)?;
 
-		// write thrice in case we accidentally do it in the wrong order (try to set max > min)
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
+		if self.write_min(&root).is_err() {
+			self.write_max(&root)?;
+			self.write_min(&root)?;
+		}
+		self.write_max(&root)?;
 
 		Ok(())
 	}

@@ -48,20 +48,22 @@ impl GpuInfo {
 		Ok(gpus)
 	}
 
-	fn write_min_max(&self, root: &Path) -> Result<()> {
-		sysfs_write(&root.join("gt_min_freq_mhz"), self.min_freq)?;
-		sysfs_write(&root.join("gt_max_freq_mhz"), self.max_freq)?;
+	fn write_min(&self, root: &Path) -> Result<()> {
+		sysfs_write(&root.join("gt_min_freq_mhz"), self.min_freq)
+	}
 
-		Ok(())
+	fn write_max(&self, root: &Path) -> Result<()> {
+		sysfs_write(&root.join("gt_max_freq_mhz"), self.max_freq)
 	}
 
 	pub fn write(&self) -> Result<()> {
 		let root = PathBuf::from(format!("class/drm/card{}/", self.id));
 
-		// write thrice in case we accidentally do it in the wrong order (try to set max > min)
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
+		if self.write_min(&root).is_err() {
+			self.write_max(&root)?;
+			self.write_min(&root)?;
+		}
+		self.write_max(&root)?;
 
 		Ok(())
 	}
