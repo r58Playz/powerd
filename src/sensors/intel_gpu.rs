@@ -1,0 +1,74 @@
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
+
+use anyhow::Result;
+
+use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
+
+#[derive(Clone, Debug)]
+pub struct GpuInfo {
+    pub id: usize,
+    pub hw_min: u64,
+    pub hw_max: u64,
+    pub hw_efficient: u64,
+
+    pub min: u64,
+    pub max: u64,
+}
+impl GpuInfo {
+    fn read(id: usize) -> Result<Option<Self>> {
+        let root = PathBuf::from(format!("class/drm/card{id}/"));
+
+        if !sysfs_exists(&root)? {
+            return Ok(None);
+        }
+
+        Ok(Some(Self {
+            id,
+            hw_min: read_sysfs(&root.join("gt_RPn_freq_mhz"))?,
+            hw_efficient: read_sysfs(&root.join("gt_RP1_freq_mhz"))?,
+            hw_max: read_sysfs(&root.join("gt_RP0_freq_mhz"))?,
+
+            min: read_sysfs(&root.join("gt_min_freq_mhz"))?,
+            max: read_sysfs(&root.join("gt_max_freq_mhz"))?,
+        }))
+    }
+
+    pub fn read_all() -> Result<Vec<Self>> {
+        let mut gpus = Vec::new();
+        while let Some(gpu) = Self::read(gpus.len())? {
+            gpus.push(gpu);
+        }
+
+        Ok(gpus)
+    }
+
+    fn write_min_max(&self, root: &Path) -> Result<()> {
+        write_sysfs(&root.join("gt_min_freq_mhz"), self.min)?;
+        write_sysfs(&root.join("gt_max_freq_mhz"), self.max)?;
+
+        Ok(())
+    }
+
+    pub fn write(&self) -> Result<()> {
+        let root = PathBuf::from(format!("class/drm/card{}/", self.id));
+
+        // write thrice in case we accidentally do it in the wrong order (try to set max > min)
+        self.write_min_max(&root)?;
+        self.write_min_max(&root)?;
+        self.write_min_max(&root)?;
+
+        Ok(())
+    }
+}
+impl Display for GpuInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "GPU {} ({}-{}MHz, {}MHz efficient): {}-{}MHz",
+            self.id, self.hw_min, self.hw_max, self.hw_efficient, self.min, self.max
+        )
+    }
+}
