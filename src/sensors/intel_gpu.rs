@@ -14,6 +14,7 @@ pub struct GpuInfo {
     pub hw_min_freq: u64,
     pub hw_max_freq: u64,
     pub hw_eff_freq: u64,
+	pub hw_cur_freq: u64,
 
     pub min_freq: u64,
     pub max_freq: u64,
@@ -31,6 +32,7 @@ impl GpuInfo {
             hw_min_freq: sysfs_read(&root.join("gt_RPn_freq_mhz"))?,
             hw_eff_freq: sysfs_read(&root.join("gt_RP1_freq_mhz"))?,
             hw_max_freq: sysfs_read(&root.join("gt_RP0_freq_mhz"))?,
+            hw_cur_freq: sysfs_read(&root.join("gt_act_freq_mhz"))?,
 
             min_freq: sysfs_read(&root.join("gt_min_freq_mhz"))?,
             max_freq: sysfs_read(&root.join("gt_max_freq_mhz"))?,
@@ -68,13 +70,14 @@ impl Display for GpuInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "GPU {} ({}-{}MHz, {}MHz efficient): {}-{}MHz",
+            "GPU {} ({}-{}MHz, {}MHz efficient): {}-{}MHz -- currently at {}MHz",
             self.id,
             self.hw_min_freq,
             self.hw_max_freq,
             self.hw_eff_freq,
             self.min_freq,
-            self.max_freq
+            self.max_freq,
+			self.hw_cur_freq,
         )
     }
 }

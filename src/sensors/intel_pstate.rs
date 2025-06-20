@@ -11,9 +11,10 @@ use crate::sysfs::{sysfs_read, sysfs_exists, sysfs_write};
 #[derive(Clone, Debug)]
 pub struct PstateCpuInfo {
     pub id: usize,
-    pub max_hw_freq: u64,
-    pub min_hw_freq: u64,
-    pub max_base_freq: u64,
+    pub hw_max_freq: u64,
+    pub hw_min_freq: u64,
+    pub hw_base_freq: u64,
+	pub hw_current_freq: u64,
 
     pub governor: String,
     pub epp: String,
@@ -30,9 +31,10 @@ impl PstateCpuInfo {
 
         Ok(Some(Self {
             id,
-            max_hw_freq: sysfs_read(&root.join("cpuinfo_max_freq"))?,
-            min_hw_freq: sysfs_read(&root.join("cpuinfo_min_freq"))?,
-            max_base_freq: sysfs_read(&root.join("base_frequency"))?,
+            hw_max_freq: sysfs_read(&root.join("cpuinfo_max_freq"))?,
+            hw_min_freq: sysfs_read(&root.join("cpuinfo_min_freq"))?,
+            hw_base_freq: sysfs_read(&root.join("base_frequency"))?,
+			hw_current_freq: sysfs_read(&root.join("scaling_cur_freq"))?,
 
             governor: sysfs_read(&root.join("scaling_governor"))?,
             epp: sysfs_read(&root.join("energy_performance_preference"))?,
@@ -66,15 +68,16 @@ impl Display for PstateCpuInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {}-{}MHz",
+            "CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {}-{}MHz -- currently at {}MHz",
             self.id,
-            self.min_hw_freq / 1000,
-            self.max_hw_freq / 1000,
-            self.max_base_freq / 1000,
+            self.hw_min_freq / 1000,
+            self.hw_max_freq / 1000,
+            self.hw_base_freq / 1000,
             &self.governor,
             &self.epp,
             self.min_freq / 1000,
-            self.max_freq / 1000
+            self.max_freq / 1000,
+			self.hw_current_freq / 1000,
         )
     }
 }
