@@ -12,20 +12,20 @@ pub mod intel_rapl;
 
 #[derive(Clone, Debug)]
 pub struct SensorInfo {
-    pub rapl: Vec<RaplZoneInfo>,
-    pub pstate: PstateInfo,
-    pub gpus: Vec<GpuInfo>,
-    pub cooling: CoolingProfileInfo,
+	pub rapl: Vec<RaplZoneInfo>,
+	pub pstate: PstateInfo,
+	pub gpus: Vec<GpuInfo>,
+	pub cooling: CoolingProfileInfo,
 }
 impl SensorInfo {
-    pub fn read() -> Result<Self> {
-        Ok(Self {
-            rapl: RaplZoneInfo::read_all()?,
-            pstate: PstateInfo::read()?,
-            gpus: GpuInfo::read_all()?,
-            cooling: CoolingProfileInfo::read()?,
-        })
-    }
+	pub fn read() -> Result<Self> {
+		Ok(Self {
+			rapl: RaplZoneInfo::read_all()?,
+			pstate: PstateInfo::read()?,
+			gpus: GpuInfo::read_all()?,
+			cooling: CoolingProfileInfo::read()?,
+		})
+	}
 
 	pub fn write(&self) -> Result<()> {
 		for zone in &self.rapl {
@@ -56,25 +56,25 @@ impl From<SensorInfo> for SensorConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SensorConfig {
-    pub rapl: Vec<RaplZoneConfig>,
-    pub pstate: PstateConfig,
-    pub gpus: Vec<GpuConfig>,
-    pub cooling: CoolingProfileConfig,
+	pub rapl: Vec<RaplZoneConfig>,
+	pub pstate: PstateConfig,
+	pub gpus: Vec<GpuConfig>,
+	pub cooling: CoolingProfileConfig,
 }
 impl SensorConfig {
-    pub fn apply(&self, info: &mut SensorInfo) -> Result<()> {
-        for zone in &self.rapl {
-            zone.apply(&mut info.rapl)?;
-        }
+	pub fn apply(&self, info: &mut SensorInfo) -> Result<()> {
+		for zone in &self.rapl {
+			zone.apply(&mut info.rapl)?;
+		}
 
-        self.pstate.apply(&mut info.pstate)?;
+		self.pstate.apply(&mut info.pstate)?;
 
-        for gpu in &self.gpus {
-            gpu.apply(&mut info.gpus)?;
-        }
+		for gpu in &self.gpus {
+			gpu.apply(&mut info.gpus)?;
+		}
 
-        self.cooling.apply(&mut info.cooling)?;
+		self.cooling.apply(&mut info.cooling)?;
 
-        Ok(())
-    }
+		Ok(())
+	}
 }
