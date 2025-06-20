@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
+use crate::sysfs::{sysfs_read, sysfs_exists, sysfs_write};
 
 #[derive(Clone, Debug)]
 pub struct RaplConstraintInfo {
@@ -26,9 +26,9 @@ impl RaplConstraintInfo {
 
         Ok(Some(Self {
             id,
-            name: read_sysfs(&name)?,
-            power_limit: read_sysfs(&zone_path.join(format!("constraint_{id}_power_limit_uw")))?,
-            time_window: read_sysfs(&zone_path.join(format!("constraint_{id}_time_window_us")))
+            name: sysfs_read(&name)?,
+            power_limit: sysfs_read(&zone_path.join(format!("constraint_{id}_power_limit_uw")))?,
+            time_window: sysfs_read(&zone_path.join(format!("constraint_{id}_time_window_us")))
                 .ok()
                 .map(Duration::from_micros),
         }))
@@ -36,13 +36,13 @@ impl RaplConstraintInfo {
 
     fn write(&self, zone_path: &Path) -> Result<()> {
         let id = self.id;
-        write_sysfs(
+        sysfs_write(
             &zone_path.join(format!("constraint_{id}_power_limit_uw")),
             self.power_limit,
         )?;
 
         if let Some(time_window) = &self.time_window {
-            write_sysfs(
+            sysfs_write(
                 &zone_path.join(format!("constraint_{id}_time_window_us")),
                 time_window.as_micros(),
             )?;
@@ -100,7 +100,7 @@ impl RaplZoneInfo {
         }
 
         Ok(Some(Self {
-            name: read_sysfs(&zone_path.join("name"))?,
+            name: sysfs_read(&zone_path.join("name"))?,
             path: zone_path,
             constraints,
             subzones,

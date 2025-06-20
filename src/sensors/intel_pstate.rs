@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
+use crate::sysfs::{sysfs_read, sysfs_exists, sysfs_write};
 
 #[derive(Clone, Debug)]
 pub struct PstateCpuInfo {
@@ -30,20 +30,20 @@ impl PstateCpuInfo {
 
         Ok(Some(Self {
             id,
-            max_hw_freq: read_sysfs(&root.join("cpuinfo_max_freq"))?,
-            min_hw_freq: read_sysfs(&root.join("cpuinfo_min_freq"))?,
-            max_base_freq: read_sysfs(&root.join("base_frequency"))?,
+            max_hw_freq: sysfs_read(&root.join("cpuinfo_max_freq"))?,
+            min_hw_freq: sysfs_read(&root.join("cpuinfo_min_freq"))?,
+            max_base_freq: sysfs_read(&root.join("base_frequency"))?,
 
-            governor: read_sysfs(&root.join("scaling_governor"))?,
-            epp: read_sysfs(&root.join("energy_performance_preference"))?,
-            max_freq: read_sysfs(&root.join("scaling_max_freq"))?,
-            min_freq: read_sysfs(&root.join("scaling_min_freq"))?,
+            governor: sysfs_read(&root.join("scaling_governor"))?,
+            epp: sysfs_read(&root.join("energy_performance_preference"))?,
+            max_freq: sysfs_read(&root.join("scaling_max_freq"))?,
+            min_freq: sysfs_read(&root.join("scaling_min_freq"))?,
         }))
     }
 
     fn write_min_max(&self, root: &Path) -> Result<()> {
-        write_sysfs(&root.join("scaling_min_freq"), self.min_freq)?;
-        write_sysfs(&root.join("scaling_max_freq"), self.max_freq)?;
+        sysfs_write(&root.join("scaling_min_freq"), self.min_freq)?;
+        sysfs_write(&root.join("scaling_max_freq"), self.max_freq)?;
 
         Ok(())
     }
@@ -51,8 +51,8 @@ impl PstateCpuInfo {
     fn write(&self) -> Result<()> {
         let root = PathBuf::from(format!("devices/system/cpu/cpu{}/cpufreq", self.id));
 
-        write_sysfs(&root.join("scaling_governor"), &self.governor)?;
-        write_sysfs(&root.join("energy_performance_preference"), &self.epp)?;
+        sysfs_write(&root.join("scaling_governor"), &self.governor)?;
+        sysfs_write(&root.join("energy_performance_preference"), &self.epp)?;
 
         // write thrice in case we accidentally do it in the wrong order (try to set max > min)
         self.write_min_max(&root)?;
@@ -93,7 +93,7 @@ impl PstateInfo {
 
         Ok(Self {
             cpus,
-            turbo: read_sysfs::<usize>(Path::new("devices/system/cpu/intel_pstate/no_turbo"))? == 0,
+            turbo: sysfs_read::<usize>(Path::new("devices/system/cpu/intel_pstate/no_turbo"))? == 0,
         })
     }
 
@@ -102,7 +102,7 @@ impl PstateInfo {
             cpu.write()?;
         }
 
-        write_sysfs(
+        sysfs_write(
             Path::new("devices/system/cpu/intel_pstate/no_turbo"),
             if self.turbo { 0 } else { 1 },
         )?;

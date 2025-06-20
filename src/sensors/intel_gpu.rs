@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
+use crate::sysfs::{sysfs_read, sysfs_exists, sysfs_write};
 
 #[derive(Clone, Debug)]
 pub struct GpuInfo {
@@ -28,12 +28,12 @@ impl GpuInfo {
 
         Ok(Some(Self {
             id,
-            hw_min_freq: read_sysfs(&root.join("gt_RPn_freq_mhz"))?,
-            hw_eff_freq: read_sysfs(&root.join("gt_RP1_freq_mhz"))?,
-            hw_max_freq: read_sysfs(&root.join("gt_RP0_freq_mhz"))?,
+            hw_min_freq: sysfs_read(&root.join("gt_RPn_freq_mhz"))?,
+            hw_eff_freq: sysfs_read(&root.join("gt_RP1_freq_mhz"))?,
+            hw_max_freq: sysfs_read(&root.join("gt_RP0_freq_mhz"))?,
 
-            min_freq: read_sysfs(&root.join("gt_min_freq_mhz"))?,
-            max_freq: read_sysfs(&root.join("gt_max_freq_mhz"))?,
+            min_freq: sysfs_read(&root.join("gt_min_freq_mhz"))?,
+            max_freq: sysfs_read(&root.join("gt_max_freq_mhz"))?,
         }))
     }
 
@@ -47,8 +47,8 @@ impl GpuInfo {
     }
 
     fn write_min_max(&self, root: &Path) -> Result<()> {
-        write_sysfs(&root.join("gt_min_freq_mhz"), self.min_freq)?;
-        write_sysfs(&root.join("gt_max_freq_mhz"), self.max_freq)?;
+        sysfs_write(&root.join("gt_min_freq_mhz"), self.min_freq)?;
+        sysfs_write(&root.join("gt_max_freq_mhz"), self.max_freq)?;
 
         Ok(())
     }

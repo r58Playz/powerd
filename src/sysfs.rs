@@ -6,7 +6,7 @@ pub fn sysfs_exists(path: &Path) -> Result<bool> {
     std::fs::exists(Path::new("/sys/").join(path)).context("failed to check if sysfs path exists")
 }
 
-pub fn read_sysfs<T>(path: &Path) -> Result<T>
+pub fn sysfs_read<T>(path: &Path) -> Result<T>
 where
     T: FromStr,
     <T as FromStr>::Err: Error + Sync + Send + 'static,
@@ -17,7 +17,7 @@ where
         .with_context(|| format!("failed to read sysfs {}", path.to_str().unwrap_or_default()))
 }
 
-pub fn write_sysfs(path: &Path, val: impl ToString) -> Result<()> {
+pub fn sysfs_write(path: &Path, val: impl ToString) -> Result<()> {
     let string = val.to_string();
     std::fs::write(Path::new("/sys/").join(path), string.as_bytes()).with_context(|| {
         format!(

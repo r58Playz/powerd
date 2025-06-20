@@ -3,19 +3,19 @@ use std::{fmt::Display, path::Path};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use crate::sysfs::{read_sysfs, write_sysfs};
+use crate::sysfs::{sysfs_read, sysfs_write};
 
 #[derive(Debug, Clone)]
 pub struct CoolingProfileInfo(String);
 impl CoolingProfileInfo {
     pub fn read() -> Result<Self> {
-        Ok(Self(read_sysfs(Path::new(
+        Ok(Self(sysfs_read(Path::new(
             "firmware/acpi/platform_profile",
         ))?))
     }
 
     pub fn write(&self) -> Result<()> {
-        write_sysfs(Path::new("firmware/acpi/platform_profile"), &self.0)
+        sysfs_write(Path::new("firmware/acpi/platform_profile"), &self.0)
     }
 }
 impl Display for CoolingProfileInfo {
