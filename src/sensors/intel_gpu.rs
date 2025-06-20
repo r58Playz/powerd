@@ -3,19 +3,20 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
 
 #[derive(Clone, Debug)]
 pub struct GpuInfo {
     pub id: usize,
-    pub hw_min: u64,
-    pub hw_max: u64,
-    pub hw_efficient: u64,
+    pub hw_min_freq: u64,
+    pub hw_max_freq: u64,
+    pub hw_eff_freq: u64,
 
-    pub min: u64,
-    pub max: u64,
+    pub min_freq: u64,
+    pub max_freq: u64,
 }
 impl GpuInfo {
     fn read(id: usize) -> Result<Option<Self>> {
@@ -27,12 +28,12 @@ impl GpuInfo {
 
         Ok(Some(Self {
             id,
-            hw_min: read_sysfs(&root.join("gt_RPn_freq_mhz"))?,
-            hw_efficient: read_sysfs(&root.join("gt_RP1_freq_mhz"))?,
-            hw_max: read_sysfs(&root.join("gt_RP0_freq_mhz"))?,
+            hw_min_freq: read_sysfs(&root.join("gt_RPn_freq_mhz"))?,
+            hw_eff_freq: read_sysfs(&root.join("gt_RP1_freq_mhz"))?,
+            hw_max_freq: read_sysfs(&root.join("gt_RP0_freq_mhz"))?,
 
-            min: read_sysfs(&root.join("gt_min_freq_mhz"))?,
-            max: read_sysfs(&root.join("gt_max_freq_mhz"))?,
+            min_freq: read_sysfs(&root.join("gt_min_freq_mhz"))?,
+            max_freq: read_sysfs(&root.join("gt_max_freq_mhz"))?,
         }))
     }
 
@@ -46,8 +47,8 @@ impl GpuInfo {
     }
 
     fn write_min_max(&self, root: &Path) -> Result<()> {
-        write_sysfs(&root.join("gt_min_freq_mhz"), self.min)?;
-        write_sysfs(&root.join("gt_max_freq_mhz"), self.max)?;
+        write_sysfs(&root.join("gt_min_freq_mhz"), self.min_freq)?;
+        write_sysfs(&root.join("gt_max_freq_mhz"), self.max_freq)?;
 
         Ok(())
     }
@@ -68,7 +69,41 @@ impl Display for GpuInfo {
         write!(
             f,
             "GPU {} ({}-{}MHz, {}MHz efficient): {}-{}MHz",
-            self.id, self.hw_min, self.hw_max, self.hw_efficient, self.min, self.max
+            self.id,
+            self.hw_min_freq,
+            self.hw_max_freq,
+            self.hw_eff_freq,
+            self.min_freq,
+            self.max_freq
         )
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GpuConfig {
+    pub id: usize,
+    pub min_freq: u64,
+    pub max_freq: u64,
+}
+impl GpuConfig {
+    pub fn apply(&self, gpus: &mut [GpuInfo]) -> Result<()> {
+        let gpu = gpus
+            .iter_mut()
+            .find(|x| x.id == self.id)
+            .with_context(|| format!("failed to find gpu with id {}", self.id))?;
+
+        gpu.max_freq = self.max_freq;
+        gpu.min_freq = self.min_freq;
+
+        Ok(())
+    }
+}
+impl From<GpuInfo> for GpuConfig {
+    fn from(value: GpuInfo) -> Self {
+        Self {
+            id: value.id,
+            max_freq: value.max_freq,
+            min_freq: value.min_freq,
+        }
     }
 }

@@ -3,7 +3,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
 
@@ -44,7 +45,7 @@ impl PstateCpuInfo {
         write_sysfs(&root.join("scaling_min_freq"), self.min_freq)?;
         write_sysfs(&root.join("scaling_max_freq"), self.max_freq)?;
 
-		Ok(())
+        Ok(())
     }
 
     fn write(&self) -> Result<()> {
@@ -53,10 +54,10 @@ impl PstateCpuInfo {
         write_sysfs(&root.join("scaling_governor"), &self.governor)?;
         write_sysfs(&root.join("energy_performance_preference"), &self.epp)?;
 
-		// write thrice in case we accidentally do it in the wrong order (try to set max > min)
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
-		self.write_min_max(&root)?;
+        // write thrice in case we accidentally do it in the wrong order (try to set max > min)
+        self.write_min_max(&root)?;
+        self.write_min_max(&root)?;
+        self.write_min_max(&root)?;
 
         Ok(())
     }
@@ -123,5 +124,67 @@ impl Display for PstateInfo {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PstateCpuConfig {
+    pub ids: Vec<usize>,
+    pub governor: String,
+    pub epp: String,
+    pub max_freq: u64,
+    pub min_freq: u64,
+}
+impl PstateCpuConfig {
+    pub fn apply(&self, cpus: &mut [PstateCpuInfo]) -> Result<()> {
+        for id in &self.ids {
+            let cpu = cpus
+                .iter_mut()
+                .find(|x| x.id == *id)
+                .with_context(|| format!("failed to find cpu with id {id}"))?;
+
+            cpu.governor.clone_from(&self.governor);
+            cpu.epp.clone_from(&self.epp);
+            cpu.max_freq = self.max_freq;
+            cpu.min_freq = self.min_freq;
+        }
+
+        Ok(())
+    }
+}
+impl From<PstateCpuInfo> for PstateCpuConfig {
+    fn from(value: PstateCpuInfo) -> Self {
+        Self {
+            ids: vec![value.id],
+            governor: value.governor,
+            epp: value.epp,
+            max_freq: value.max_freq,
+            min_freq: value.min_freq,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PstateConfig {
+    pub cpus: Vec<PstateCpuConfig>,
+    pub turbo: bool,
+}
+impl PstateConfig {
+    pub fn apply(&self, info: &mut PstateInfo) -> Result<()> {
+        for cpu in &self.cpus {
+            cpu.apply(&mut info.cpus)?;
+        }
+
+        info.turbo = self.turbo;
+
+        Ok(())
+    }
+}
+impl From<PstateInfo> for PstateConfig {
+    fn from(value: PstateInfo) -> Self {
+        Self {
+            cpus: value.cpus.into_iter().map(Into::into).collect(),
+            turbo: value.turbo,
+        }
     }
 }

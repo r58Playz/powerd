@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::sysfs::{read_sysfs, sysfs_exists, write_sysfs};
 
@@ -151,4 +152,71 @@ impl Display for RaplZoneInfo {
 
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RaplConstraintConfig {
+    pub id: usize,
+    pub power_limit: Option<u64>,
+    pub time_window: Option<u64>,
+}
+impl RaplConstraintConfig {
+    pub fn apply(&self, constraints: &mut [RaplConstraintInfo]) -> Result<()> {
+        let constraint = constraints
+            .iter_mut()
+            .find(|x| x.id == self.id)
+            .with_context(|| format!("failed to find constraint with id {}", self.id))?;
+
+        if let Some(power_limit) = self.power_limit {
+            constraint.power_limit = power_limit;
+        }
+        if let Some(time_window) = self.time_window {
+            constraint.time_window = Some(Duration::from_micros(time_window));
+        }
+
+        Ok(())
+    }
+}
+impl From<RaplConstraintInfo> for RaplConstraintConfig {
+	fn from(value: RaplConstraintInfo) -> Self {
+	    Self {
+			id: value.id,
+			power_limit: Some(value.power_limit),
+			time_window: value.time_window.map(|x| x.as_micros() as u64),
+		}
+	}
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RaplZoneConfig {
+    pub name: String,
+    pub constraints: Vec<RaplConstraintConfig>,
+    pub subzones: Vec<RaplZoneConfig>,
+}
+impl RaplZoneConfig {
+    pub fn apply(&self, zones: &mut [RaplZoneInfo]) -> Result<()> {
+        let zone_info = zones
+            .iter_mut()
+            .find(|x| x.name == self.name)
+            .with_context(|| format!("failed to find zone with name {}", self.name))?;
+
+        for zone in &self.subzones {
+            zone.apply(&mut zone_info.subzones)?;
+        }
+
+        for constraint in &self.constraints {
+            constraint.apply(&mut zone_info.constraints)?;
+        }
+
+        Ok(())
+    }
+}
+impl From<RaplZoneInfo> for RaplZoneConfig {
+	fn from(value: RaplZoneInfo) -> Self {
+	    Self {
+			name: value.name,
+			constraints: value.constraints.into_iter().map(Into::into).collect(),
+			subzones: value.subzones.into_iter().map(Into::into).collect(),
+		}
+	}
 }

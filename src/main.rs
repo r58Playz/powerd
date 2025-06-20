@@ -1,30 +1,15 @@
 use anyhow::Result;
-use sensors::{cooling_profile::CoolingProfileInfo, intel_gpu::GpuInfo, intel_pstate::PstateInfo, intel_rapl::RaplZoneInfo};
+use sensors::{SensorConfig, SensorInfo};
 
-mod sysfs;
 mod sensors;
+mod sysfs;
 
 fn main() -> Result<()> {
-	println!("RAPL Zones:");
-	let rapl = RaplZoneInfo::read_all()?;
-	for zone in rapl {
-		println!("{zone}");
-		zone.write()?;
-	}
+    let info = SensorInfo::read()?;
+    info.write()?;
 
-	let cooling = CoolingProfileInfo::read()?;
-	println!("{cooling}\n");
-	cooling.write()?;
+    let config = serde_json::to_string_pretty(&SensorConfig::from(info))?;
+    println!("{config}");
 
-    let cpu = PstateInfo::read()?;
-    println!("{cpu}");
-    cpu.write()?;
-
-	let gpus = GpuInfo::read_all()?;
-	for gpu in gpus {
-		println!("{gpu}");
-		gpu.write()?;
-	}
-
-	Ok(())
+    Ok(())
 }
