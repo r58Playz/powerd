@@ -7,7 +7,7 @@ use std::{
 	path::PathBuf,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use log::{info, LevelFilter};
 use serde::{Deserialize, Serialize};
@@ -52,10 +52,10 @@ fn main() -> Result<()> {
 		x => {
 			let serialized = serde_json::to_string(&x)?;
 			let mut socket =
-				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)?;
-			writeln!(socket, "{serialized}")?;
+				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?).context("failed to connect to daemon")?;
+			writeln!(socket, "{serialized}").context("failed to send daemon request")?;
 
-			copy(&mut socket, &mut stdout())?;
+			copy(&mut socket, &mut stdout()).context("failed to forward response")?;
 		}
 	}
 
