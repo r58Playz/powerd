@@ -1,0 +1,9 @@
+[Unit]
+Description=Intel power management daemon
+
+[Service]
+Type=simple
+ExecStart=/home/r58playz/.cargo/bin/powerd daemon /home/r58playz/powerd
+
+[Install]
+WantedBy=default.target

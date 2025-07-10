@@ -29,6 +29,9 @@ enum Cli {
 		/// Path to configuration JSON
 		path: PathBuf,
 	},
+	/// Restore current configuration
+	Restore,
+	/// Run daemon
 	Daemon {
 		/// Path to profiles directory
 		profiles: PathBuf,
