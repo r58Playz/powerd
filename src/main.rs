@@ -1,13 +1,24 @@
-use std::path::PathBuf;
+use std::{
+	io::{Write, copy, stdout},
+	os::{
+		linux::net::SocketAddrExt,
+		unix::net::{SocketAddr, UnixStream},
+	},
+	path::PathBuf,
+};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
-use sensors::{SensorConfig, SensorInfo};
+use log::{info, LevelFilter};
+use serde::{Deserialize, Serialize};
 
+use crate::daemon::daemon;
+
+mod daemon;
 mod sensors;
 mod sysfs;
 
-#[derive(Parser)]
+#[derive(Parser, Deserialize, Serialize)]
 enum Cli {
 	/// Print current info
 	Info,
@@ -18,33 +29,33 @@ enum Cli {
 		/// Path to configuration JSON
 		path: PathBuf,
 	},
+	Daemon {
+		/// Path to profiles directory
+		profiles: PathBuf,
+	},
 }
 
 fn main() -> Result<()> {
 	let args = Cli::parse();
 
 	match args {
-		Cli::Info => {
-			println!("{}", SensorInfo::read()?);
-		},
-		Cli::Dump => {
-			println!(
-				"{}",
-				serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?
-			)
+		Cli::Daemon { profiles } => {
+			env_logger::builder()
+				.filter_level(LevelFilter::Trace)
+				.parse_default_env()
+				.init();
+
+			info!("starting daemon");
+
+			daemon(profiles)?;
 		}
-		Cli::Apply { path } => {
-			let config: SensorConfig = serde_json::from_str(
-				&std::fs::read_to_string(path).context("failed to read config file")?,
-			)
-			.context("failed to deserialize config")?;
+		x => {
+			let serialized = serde_json::to_string(&x)?;
+			let mut socket =
+				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)?;
+			writeln!(socket, "{serialized}")?;
 
-			let mut info = SensorInfo::read()?;
-			config.apply(&mut info).context("failed to apply config")?;
-			info.write().context("failed to write config")?;
-
-			info = SensorInfo::read()?;
-			println!("{info}");
+			copy(&mut socket, &mut stdout())?;
 		}
 	}
 
