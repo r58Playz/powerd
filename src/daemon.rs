@@ -26,7 +26,7 @@ pub fn daemon(profiles: PathBuf) -> Result<()> {
 		let current = current.clone();
 		move || {
 			loop {
-				std::thread::sleep(Duration::from_secs(5 * 60));
+				std::thread::sleep(Duration::from_secs(15));
 				if let Some(ref cfg) = *current.lock().unwrap()
 					&& let Err(err) = apply_cfg(cfg)
 				{
