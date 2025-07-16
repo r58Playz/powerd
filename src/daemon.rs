@@ -4,7 +4,7 @@ use std::{
 		linux::net::SocketAddrExt,
 		unix::net::{SocketAddr, UnixListener, UnixStream},
 	},
-	path::PathBuf,
+	path::{Path, PathBuf},
 	sync::{Arc, Mutex},
 	time::Duration,
 };
@@ -19,8 +19,33 @@ use crate::{
 
 type CurrentConfig = Arc<Mutex<Option<SensorConfig>>>;
 
-pub fn daemon(profiles: PathBuf) -> Result<()> {
+fn apply_cfg_from_file(profiles: &Path, path: PathBuf, current: CurrentConfig) -> Result<()> {
+	let config: SensorConfig = serde_json::from_str(
+		&std::fs::read_to_string(profiles.join(path)).context("failed to read config file")?,
+	)
+	.context("failed to deserialize config")?;
+
+	apply_cfg(&config)?;
+	current.lock().unwrap().replace(config);
+
+	Ok(())
+}
+
+fn apply_cfg(cfg: &SensorConfig) -> Result<()> {
+	let mut info = SensorInfo::read().context("failed to read current sensor data")?;
+	cfg.apply(&mut info).context("failed to apply config")?;
+	info.write().context("failed to write config")?;
+	Ok(())
+}
+
+pub fn daemon(profiles: PathBuf, default: Option<PathBuf>) -> Result<()> {
 	let current: CurrentConfig = Arc::new(Mutex::new(None));
+
+	if let Some(default) = default {
+		let current = current.clone();
+
+		apply_cfg_from_file(&profiles, default, current)?;
+	}
 
 	std::thread::spawn({
 		let current = current.clone();
@@ -63,24 +88,17 @@ pub fn client(mut socket: UnixStream, profiles: PathBuf, current: CurrentConfig)
 
 	let args = serde_json::from_str::<Cli>(&str)?;
 
-	if let Err(err) = handle(args, &socket, profiles, current) {
+	if let Err(err) = handle(args, &socket, &profiles, current) {
 		writeln!(socket, "error from daemon: {err:?}")?;
 	}
 
 	Ok(())
 }
 
-fn apply_cfg(cfg: &SensorConfig) -> Result<()> {
-	let mut info = SensorInfo::read().context("failed to read current sensor data")?;
-	cfg.apply(&mut info).context("failed to apply config")?;
-	info.write().context("failed to write config")?;
-	Ok(())
-}
-
 pub fn handle(
 	args: Cli,
 	mut socket: &UnixStream,
-	profiles: PathBuf,
+	profiles: &Path,
 	current: CurrentConfig,
 ) -> Result<()> {
 	match args {
@@ -95,14 +113,7 @@ pub fn handle(
 			)?;
 		}
 		Cli::Apply { path } => {
-			let config: SensorConfig = serde_json::from_str(
-				&std::fs::read_to_string(profiles.join(path))
-					.context("failed to read config file")?,
-			)
-			.context("failed to deserialize config")?;
-
-			apply_cfg(&config)?;
-			current.lock().unwrap().replace(config);
+			apply_cfg_from_file(profiles, path, current)?;
 
 			let info = SensorInfo::read()?;
 			writeln!(socket, "{info}")?;
@@ -117,7 +128,7 @@ pub fn handle(
 				writeln!(socket, "no config was set")?;
 			}
 		}
-		Cli::Daemon { profiles: _ } => {
+		Cli::Daemon { .. } | Cli::RootDump | Cli::RootInfo => {
 			writeln!(socket, "no")?;
 		}
 	}

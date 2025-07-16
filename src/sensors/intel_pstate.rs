@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::sysfs::{sysfs_exists, sysfs_read, sysfs_write};
+use crate::{msr::{msr_read, msr_write, Msr}, sysfs::{sysfs_exists, sysfs_read, sysfs_write}};
 
 #[derive(Clone, Debug)]
 pub struct PstateCpuInfo {
@@ -18,12 +18,17 @@ pub struct PstateCpuInfo {
 
 	pub governor: String,
 	pub epp: String,
+	pub epb: u64,
 	pub max_freq: u64,
 	pub min_freq: u64,
+
+	pub ctdp: u64,
 }
 impl PstateCpuInfo {
 	fn read(id: usize) -> Result<Option<Self>> {
-		let root = PathBuf::from(format!("devices/system/cpu/cpu{id}/cpufreq"));
+		let root = PathBuf::from(format!("devices/system/cpu/cpu{id}/"));
+		let freq = root.join("cpufreq");
+		let power = root.join("power");
 
 		if !sysfs_exists(&root)? {
 			return Ok(None);
@@ -31,15 +36,18 @@ impl PstateCpuInfo {
 
 		Ok(Some(Self {
 			id,
-			hw_max_freq: sysfs_read(&root.join("cpuinfo_max_freq"))?,
-			hw_min_freq: sysfs_read(&root.join("cpuinfo_min_freq"))?,
-			hw_base_freq: sysfs_read(&root.join("base_frequency"))?,
-			hw_current_freq: sysfs_read(&root.join("scaling_cur_freq"))?,
+			hw_max_freq: sysfs_read(&freq.join("cpuinfo_max_freq"))?,
+			hw_min_freq: sysfs_read(&freq.join("cpuinfo_min_freq"))?,
+			hw_base_freq: sysfs_read(&freq.join("base_frequency"))?,
+			hw_current_freq: sysfs_read(&freq.join("scaling_cur_freq"))?,
 
-			governor: sysfs_read(&root.join("scaling_governor"))?,
-			epp: sysfs_read(&root.join("energy_performance_preference"))?,
-			max_freq: sysfs_read(&root.join("scaling_max_freq"))?,
-			min_freq: sysfs_read(&root.join("scaling_min_freq"))?,
+			governor: sysfs_read(&freq.join("scaling_governor"))?,
+			epp: sysfs_read(&freq.join("energy_performance_preference"))?,
+			epb: sysfs_read(&power.join("energy_perf_bias"))?,
+			max_freq: sysfs_read(&freq.join("scaling_max_freq"))?,
+			min_freq: sysfs_read(&freq.join("scaling_min_freq"))?,
+
+			ctdp: msr_read(id, Msr::ConfigTdpControl)?,
 		}))
 	}
 
@@ -51,16 +59,20 @@ impl PstateCpuInfo {
 	}
 
 	fn write(&self) -> Result<()> {
-		let root = PathBuf::from(format!("devices/system/cpu/cpu{}/cpufreq", self.id));
+		let root = PathBuf::from(format!("devices/system/cpu/cpu{}/", self.id));
+		let freq = root.join("cpufreq");
+		let power = root.join("power");
 
-		sysfs_write(&root.join("scaling_governor"), &self.governor)?;
-		sysfs_write(&root.join("energy_performance_preference"), &self.epp)?;
+		sysfs_write(&freq.join("scaling_governor"), &self.governor)?;
+		sysfs_write(&freq.join("energy_performance_preference"), &self.epp)?;
+		sysfs_write(&power.join("energy_perf_bias"), self.epb)?;
+		msr_write(self.id, Msr::ConfigTdpControl, self.ctdp)?;
 
-		if self.write_min(&root).is_err() {
-			self.write_max(&root)?;
-			self.write_min(&root)?;
+		if self.write_min(&freq).is_err() {
+			self.write_max(&freq)?;
+			self.write_min(&freq)?;
 		}
-		self.write_max(&root)?;
+		self.write_max(&freq)?;
 
 		Ok(())
 	}
@@ -69,13 +81,15 @@ impl Display for PstateCpuInfo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(
 			f,
-			"CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {}-{}MHz -- currently at {}MHz",
+			"CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {} epb, {} cTDP, {}-{}MHz -- currently at {}MHz",
 			self.id,
 			self.hw_min_freq / 1000,
 			self.hw_max_freq / 1000,
 			self.hw_base_freq / 1000,
 			&self.governor,
 			&self.epp,
+			self.epb,
+			self.ctdp,
 			self.min_freq / 1000,
 			self.max_freq / 1000,
 			self.hw_current_freq / 1000,
@@ -136,8 +150,10 @@ pub struct PstateCpuConfig {
 	pub ids: Vec<usize>,
 	pub governor: String,
 	pub epp: String,
+	pub epb: u64,
 	pub max_freq: u64,
 	pub min_freq: u64,
+	pub ctdp: u64,
 }
 impl PstateCpuConfig {
 	pub fn apply(&self, cpus: &mut [PstateCpuInfo]) -> Result<()> {
@@ -149,8 +165,10 @@ impl PstateCpuConfig {
 
 			cpu.governor.clone_from(&self.governor);
 			cpu.epp.clone_from(&self.epp);
+			cpu.epb = self.epb;
 			cpu.max_freq = self.max_freq;
 			cpu.min_freq = self.min_freq;
+			cpu.ctdp = self.ctdp;
 		}
 
 		Ok(())
@@ -162,8 +180,10 @@ impl From<PstateCpuInfo> for PstateCpuConfig {
 			ids: vec![value.id],
 			governor: value.governor,
 			epp: value.epp,
+			epb: value.epb,
 			max_freq: value.max_freq,
 			min_freq: value.min_freq,
+			ctdp: value.ctdp,
 		}
 	}
 }

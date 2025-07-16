@@ -3,6 +3,7 @@ Description=Intel power management daemon
 
 [Service]
 Type=simple
+Restart=always
 ExecStart=/home/r58playz/.cargo/bin/powerd daemon /home/r58playz/powerd
 
 [Install]
