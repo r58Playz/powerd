@@ -6,7 +6,10 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{msr::{msr_get_bit, msr_read, msr_set_bit, msr_write, Msr}, sysfs::{sysfs_exists, sysfs_read, sysfs_write}};
+use crate::{
+	msr::{Msr, msr_get_bit, msr_read, msr_set_bit, msr_write},
+	sysfs::{sysfs_exists, sysfs_read, sysfs_write},
+};
 
 #[derive(Clone, Debug)]
 pub struct PstateCpuInfo {
@@ -98,7 +101,11 @@ impl Display for PstateCpuInfo {
 			&self.epp,
 			self.epb,
 			self.ctdp,
-			if self.bdprochot { "enabled" } else { "disabled" },
+			if self.bdprochot {
+				"enabled"
+			} else {
+				"disabled"
+			},
 			self.min_freq / 1000,
 			self.max_freq / 1000,
 			self.hw_current_freq / 1000,
