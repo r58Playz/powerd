@@ -6,7 +6,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::{msr::{msr_read, msr_write, Msr}, sysfs::{sysfs_exists, sysfs_read, sysfs_write}};
+use crate::{msr::{msr_get_bit, msr_read, msr_set_bit, msr_write, Msr}, sysfs::{sysfs_exists, sysfs_read, sysfs_write}};
 
 #[derive(Clone, Debug)]
 pub struct PstateCpuInfo {
@@ -23,6 +23,7 @@ pub struct PstateCpuInfo {
 	pub min_freq: u64,
 
 	pub ctdp: u64,
+	pub bdprochot: bool,
 }
 impl PstateCpuInfo {
 	fn read(id: usize) -> Result<Option<Self>> {
@@ -33,6 +34,8 @@ impl PstateCpuInfo {
 		if !sysfs_exists(&root)? {
 			return Ok(None);
 		}
+
+		let power_ctl = msr_read(id, Msr::PowerCtl)?;
 
 		Ok(Some(Self {
 			id,
@@ -48,6 +51,7 @@ impl PstateCpuInfo {
 			min_freq: sysfs_read(&freq.join("scaling_min_freq"))?,
 
 			ctdp: msr_read(id, Msr::ConfigTdpControl)?,
+			bdprochot: msr_get_bit(power_ctl, 0),
 		}))
 	}
 
@@ -68,6 +72,10 @@ impl PstateCpuInfo {
 		sysfs_write(&power.join("energy_perf_bias"), self.epb)?;
 		msr_write(self.id, Msr::ConfigTdpControl, self.ctdp)?;
 
+		let mut power_ctl = msr_read(self.id, Msr::PowerCtl)?;
+		power_ctl = msr_set_bit(power_ctl, 0, self.bdprochot);
+		msr_write(self.id, Msr::PowerCtl, power_ctl)?;
+
 		if self.write_min(&freq).is_err() {
 			self.write_max(&freq)?;
 			self.write_min(&freq)?;
@@ -81,7 +89,7 @@ impl Display for PstateCpuInfo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		write!(
 			f,
-			"CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {} epb, {} cTDP, {}-{}MHz -- currently at {}MHz",
+			"CPU {} ({}-{}MHz, {}MHz without turbo): \"{}\" governor, \"{}\" epp, {} epb, {} cTDP, bdprochot {}, {}-{}MHz -- currently at {}MHz",
 			self.id,
 			self.hw_min_freq / 1000,
 			self.hw_max_freq / 1000,
@@ -90,6 +98,7 @@ impl Display for PstateCpuInfo {
 			&self.epp,
 			self.epb,
 			self.ctdp,
+			if self.bdprochot { "enabled" } else { "disabled" },
 			self.min_freq / 1000,
 			self.max_freq / 1000,
 			self.hw_current_freq / 1000,
@@ -154,6 +163,7 @@ pub struct PstateCpuConfig {
 	pub max_freq: u64,
 	pub min_freq: u64,
 	pub ctdp: u64,
+	pub bdprochot: bool,
 }
 impl PstateCpuConfig {
 	pub fn apply(&self, cpus: &mut [PstateCpuInfo]) -> Result<()> {
@@ -169,6 +179,7 @@ impl PstateCpuConfig {
 			cpu.max_freq = self.max_freq;
 			cpu.min_freq = self.min_freq;
 			cpu.ctdp = self.ctdp;
+			cpu.bdprochot = self.bdprochot;
 		}
 
 		Ok(())
@@ -184,6 +195,7 @@ impl From<PstateCpuInfo> for PstateCpuConfig {
 			max_freq: value.max_freq,
 			min_freq: value.min_freq,
 			ctdp: value.ctdp,
+			bdprochot: value.bdprochot,
 		}
 	}
 }

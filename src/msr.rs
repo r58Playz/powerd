@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 #[repr(u32)]
 pub enum Msr {
 	ConfigTdpControl = 0x64B,
+	PowerCtl = 0x1FC,
 }
 
 fn msr_open(cpu: usize) -> Result<File> {
@@ -36,4 +37,13 @@ pub fn msr_write(cpu: usize, reg: Msr, val: u64) -> Result<()> {
 		.context("failed to write msr")?;
 
 	Ok(())
+}
+
+pub fn msr_set_bit(val: u64, bit: usize, enabled: bool) -> u64 {
+	let mask = 1 << bit;
+
+	if enabled { val | mask } else { val & !mask }
+}
+pub fn msr_get_bit(val: u64, bit: usize) -> bool {
+	((val >> bit) & 1) == 1
 }

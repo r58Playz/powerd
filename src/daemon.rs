@@ -51,7 +51,7 @@ pub fn daemon(profiles: PathBuf, default: Option<PathBuf>) -> Result<()> {
 		let current = current.clone();
 		move || {
 			loop {
-				std::thread::sleep(Duration::from_secs(15));
+				std::thread::sleep(Duration::from_secs(5));
 				if let Some(ref cfg) = *current.lock().unwrap()
 					&& let Err(err) = apply_cfg(cfg)
 				{
