@@ -10,6 +10,9 @@ use anyhow::{Context, Result};
 pub enum Msr {
 	PowerCtl = 0x1FC,
 	ConfigTdpControl = 0x64B,
+	CpuPerfLimitReasons = 0x64F,
+	GraphicsPerfLimitReasons = 0x6B0,
+	RingPerfLimitReasons = 0x6B1,
 }
 
 fn msr_open(cpu: usize) -> Result<File> {

@@ -128,7 +128,7 @@ pub fn handle(
 				writeln!(socket, "no config was set")?;
 			}
 		}
-		Cli::Daemon { .. } | Cli::RootDump | Cli::RootInfo => {
+		Cli::Daemon { .. } | Cli::RootDump | Cli::RootInfo | Cli::ThrottleInfo { .. } => {
 			writeln!(socket, "no")?;
 		}
 	}

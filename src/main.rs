@@ -8,19 +8,27 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use log::{LevelFilter, info};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	daemon::daemon,
-	sensors::{SensorConfig, SensorInfo},
+	sensors::{SensorConfig, SensorInfo}, throttle::{cpu_throttling, graphics_throttling, ring_throttling},
 };
 
 mod daemon;
 mod msr;
 mod sensors;
 mod sysfs;
+mod throttle;
+
+#[derive(ValueEnum, Copy, Clone, Deserialize, Serialize)]
+enum ThrottleTarget {
+	Cpu,
+	Gpu,
+	Ring,
+}
 
 #[derive(Parser, Deserialize, Serialize)]
 enum Cli {
@@ -39,6 +47,10 @@ enum Cli {
 	RootDump,
 	/// Print current info without contacting daemon
 	RootInfo,
+	/// Print throttling info from CPU
+	ThrottleInfo {
+		targets: Vec<ThrottleTarget>,
+	},
 	/// Run daemon
 	Daemon {
 		/// Path to profiles directory
@@ -70,6 +82,15 @@ fn main() -> Result<()> {
 				"{}",
 				serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?
 			);
+		}
+		Cli::ThrottleInfo { targets } => {
+			for target in targets {
+				match target {
+					ThrottleTarget::Cpu => cpu_throttling()?,
+					ThrottleTarget::Gpu => graphics_throttling()?,
+					ThrottleTarget::Ring => ring_throttling()?,
+				}
+			}
 		}
 		x => {
 			let serialized = serde_json::to_string(&x)?;
