@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::sensors::intel_dptf::{DptfConfig, DptfInfo};
 
 pub mod cooling_profile;
+pub mod intel_dptf;
 pub mod intel_gpu;
 pub mod intel_pstate;
 pub mod intel_rapl;
-pub mod intel_dptf;
 
 #[derive(Clone, Debug)]
 pub struct SensorInfo {

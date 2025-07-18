@@ -29,11 +29,7 @@ impl DptfInfo {
 
 impl Display for DptfInfo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(
-			f,
-			"DPTF: tcc offset: {}degC",
-			self.tcc_offset
-		)
+		write!(f, "DPTF: tcc offset: {}degC", self.tcc_offset)
 	}
 }
 
@@ -55,4 +51,3 @@ impl From<DptfInfo> for DptfConfig {
 		}
 	}
 }
-

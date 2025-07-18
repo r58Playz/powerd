@@ -9,15 +9,18 @@ use std::{
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use log::{info, LevelFilter};
+use log::{LevelFilter, info};
 use serde::{Deserialize, Serialize};
 
-use crate::{daemon::daemon, sensors::{SensorConfig, SensorInfo}};
+use crate::{
+	daemon::daemon,
+	sensors::{SensorConfig, SensorInfo},
+};
 
 mod daemon;
+mod msr;
 mod sensors;
 mod sysfs;
-mod msr;
 
 #[derive(Parser, Deserialize, Serialize)]
 enum Cli {
@@ -46,15 +49,15 @@ enum Cli {
 }
 
 fn main() -> Result<()> {
+	env_logger::builder()
+		.filter_level(LevelFilter::Trace)
+		.parse_default_env()
+		.init();
+
 	let args = Cli::parse();
 
 	match args {
 		Cli::Daemon { profiles, profile } => {
-			env_logger::builder()
-				.filter_level(LevelFilter::Trace)
-				.parse_default_env()
-				.init();
-
 			info!("starting daemon");
 
 			daemon(profiles, profile)?;
@@ -63,12 +66,16 @@ fn main() -> Result<()> {
 			println!("{}", SensorInfo::read()?);
 		}
 		Cli::RootDump => {
-			println!("{}", serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?);
+			println!(
+				"{}",
+				serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?
+			);
 		}
 		x => {
 			let serialized = serde_json::to_string(&x)?;
 			let mut socket =
-				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?).context("failed to connect to daemon")?;
+				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)
+					.context("failed to connect to daemon")?;
 			writeln!(socket, "{serialized}").context("failed to send daemon request")?;
 
 			copy(&mut socket, &mut stdout()).context("failed to forward response")?;
