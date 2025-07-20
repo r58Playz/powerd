@@ -1,8 +1,12 @@
 use std::{
-	io::{BufRead, BufReader, Write}, os::{
+	io::{BufRead, BufReader, Write},
+	os::{
 		linux::net::SocketAddrExt,
 		unix::net::{SocketAddr, UnixListener, UnixStream},
-	}, path::{Path, PathBuf}, sync::{Arc, Mutex}, time::Duration
+	},
+	path::{Path, PathBuf},
+	sync::{Arc, Mutex},
+	time::Duration,
 };
 
 use anyhow::{Context, Result};
@@ -27,7 +31,8 @@ struct DefaultProfiles {
 #[derive(Clone, Deserialize)]
 pub struct DaemonConfig {
 	profiles: PathBuf,
-	default: DefaultProfiles,
+	default: Option<DefaultProfiles>,
+	poll_frequency: Option<u64>,
 }
 
 struct CurrentProfile {
@@ -59,39 +64,42 @@ fn apply_cfg(cfg: &SensorConfig) -> Result<()> {
 pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 	let current: CurrentState = Arc::new(Mutex::new(None));
 
-	std::thread::spawn({
-		let upower = UPowerConnection::new()?;
-		let cfg = cfg.clone();
-		let current = current.clone();
-		move || {
-			loop {
-				std::thread::sleep(Duration::from_secs(5));
+	let poll_frequency = cfg.poll_frequency.unwrap_or(30);
+	if poll_frequency > 0 {
+		std::thread::spawn({
+			let upower = UPowerConnection::new()?;
+			let cfg = cfg.clone();
+			let current = current.clone();
+			move || {
+				loop {
+					std::thread::sleep(Duration::from_secs(poll_frequency));
 
-				let current = current.lock().unwrap();
+					let current = current.lock().unwrap();
 
-				if let Some(ref cfg) = *current {
-					if let Err(err) = apply_cfg(&cfg.cfg) {
-						warn!("failed to restore cfg: {err:?}");
-					}
-				} else {
-					match upower.query_on_battery() {
-						Ok(on_battery) => {
-							let path = if on_battery {
-								&cfg.default.battery
-							} else {
-								&cfg.default.ac
-							};
-
-							if let Err(err) = apply_cfg_from_file(&cfg.profiles, path) {
-								warn!("failed to apply default config: {err:?}");
-							}
+					if let Some(cfg) = &*current {
+						if let Err(err) = apply_cfg(&cfg.cfg) {
+							warn!("failed to restore cfg: {err:?}");
 						}
-						Err(err) => warn!("failed to ask upower for battery stats: {err:?}"),
+					} else if let Some(default) = &cfg.default {
+						match upower.query_on_battery() {
+							Ok(on_battery) => {
+								let path = if on_battery {
+									&default.battery
+								} else {
+									&default.ac
+								};
+
+								if let Err(err) = apply_cfg_from_file(&cfg.profiles, path) {
+									warn!("failed to apply default config: {err:?}");
+								}
+							}
+							Err(err) => warn!("failed to ask upower for battery stats: {err:?}"),
+						}
 					}
 				}
 			}
-		}
-	});
+		});
+	}
 
 	let socket = UnixListener::bind_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)?;
 
