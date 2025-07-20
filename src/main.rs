@@ -5,6 +5,7 @@ use std::{
 		unix::net::{SocketAddr, UnixStream},
 	},
 	path::PathBuf,
+	process::exit,
 };
 
 use anyhow::{Context, Result};
@@ -13,15 +14,18 @@ use log::{LevelFilter, info};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	daemon::daemon,
-	sensors::{SensorConfig, SensorInfo}, throttle::{cpu_throttling, graphics_throttling, ring_throttling},
+	daemon::{DaemonConfig, daemon},
+	sensors::{
+		SensorConfig, SensorInfo,
+		throttle::{cpu_throttling, graphics_throttling, ring_throttling},
+	},
 };
 
 mod daemon;
 mod msr;
 mod sensors;
 mod sysfs;
-mod throttle;
+mod upower;
 
 #[derive(ValueEnum, Copy, Clone, Deserialize, Serialize)]
 enum ThrottleTarget {
@@ -31,32 +35,35 @@ enum ThrottleTarget {
 }
 
 #[derive(Parser, Deserialize, Serialize)]
-enum Cli {
+enum Action {
 	/// Print current info
 	Info,
 	/// Dump current info as a configuration
 	Dump,
 	/// Apply file as a configuration
+	///
+	/// This will override automatic profile management if using the daemon
 	Apply {
 		/// Path to configuration JSON
 		path: PathBuf,
 	},
-	/// Restore current configuration
+	/// Restore automatic profile management
 	Restore,
-	/// Dump current info as a configuration without contacting daemon
-	RootDump,
-	/// Print current info without contacting daemon
-	RootInfo,
 	/// Print throttling info from CPU
-	ThrottleInfo {
-		targets: Vec<ThrottleTarget>,
-	},
+	ThrottleInfo { targets: Vec<ThrottleTarget> },
+}
+
+#[derive(Parser)]
+enum Cli {
+	#[clap(flatten)]
+	Action(Action),
+	/// Run action without contacting daemon
+	#[command(subcommand)]
+	Root(Action),
 	/// Run daemon
 	Daemon {
-		/// Path to profiles directory
-		profiles: PathBuf,
-		/// Default profile to apply
-		profile: Option<PathBuf>,
+		/// Path to configuration
+		config: PathBuf,
 	},
 }
 
@@ -69,31 +76,58 @@ fn main() -> Result<()> {
 	let args = Cli::parse();
 
 	match args {
-		Cli::Daemon { profiles, profile } => {
+		Cli::Daemon { config } => {
 			info!("starting daemon");
 
-			daemon(profiles, profile)?;
+			let cfg: DaemonConfig = serde_json::from_str(
+				&std::fs::read_to_string(config).context("failed to read config file")?,
+			)
+			.context("failed to deserialize config")?;
+
+			daemon(cfg)?;
 		}
-		Cli::RootInfo => {
-			println!("{}", SensorInfo::read()?);
-		}
-		Cli::RootDump => {
-			println!(
-				"{}",
-				serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?
-			);
-		}
-		Cli::ThrottleInfo { targets } => {
-			for target in targets {
-				match target {
-					ThrottleTarget::Cpu => cpu_throttling()?,
-					ThrottleTarget::Gpu => graphics_throttling()?,
-					ThrottleTarget::Ring => ring_throttling()?,
+		Cli::Root(action) => match action {
+			Action::Info => {
+				println!("{}", SensorInfo::read()?);
+			}
+			Action::Dump => {
+				println!(
+					"{}",
+					serde_json::to_string_pretty(&SensorConfig::from(SensorInfo::read()?))?
+				);
+			}
+			Action::Apply { path } => {
+				let cfg: SensorConfig = serde_json::from_str(
+					&std::fs::read_to_string(path).context("failed to read config file")?,
+				)
+				.context("failed to deserialize config")?;
+
+				let mut info = SensorInfo::read().context("failed to read current sensor data")?;
+				cfg.apply(&mut info).context("failed to apply config")?;
+				info.write().context("failed to write config")?;
+
+				let info = SensorInfo::read()?;
+				println!("{info}");
+			}
+			Action::Restore => {
+				println!("restoring automatic profile management requires the daemon");
+				exit(1);
+			}
+			Action::ThrottleInfo { targets } => {
+				for target in targets {
+					println!(
+						"{}",
+						match target {
+							ThrottleTarget::Cpu => cpu_throttling()?,
+							ThrottleTarget::Gpu => graphics_throttling()?,
+							ThrottleTarget::Ring => ring_throttling()?,
+						}
+					)
 				}
 			}
-		}
-		x => {
-			let serialized = serde_json::to_string(&x)?;
+		},
+		Cli::Action(action) => {
+			let serialized = serde_json::to_string(&action)?;
 			let mut socket =
 				UnixStream::connect_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)
 					.context("failed to connect to daemon")?;

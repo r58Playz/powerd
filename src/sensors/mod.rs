@@ -14,6 +14,7 @@ pub mod intel_dptf;
 pub mod intel_gpu;
 pub mod intel_pstate;
 pub mod intel_rapl;
+pub mod throttle;
 
 #[derive(Clone, Debug)]
 pub struct SensorInfo {

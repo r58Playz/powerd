@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 
 use anyhow::{Context, Result};
 
@@ -36,25 +36,30 @@ impl Display for ThrottleReason {
 	}
 }
 
-fn print(ty: &str, reasons: Vec<ThrottleReason>) {
-	print!("{ty} throttle reasons: ");
+fn print(ty: &str, reasons: Vec<ThrottleReason>) -> Result<String> {
+	let mut out = String::new();
+
+	write!(out, "{ty} throttle reasons: ")?;
 	if reasons.is_empty() {
-		println!("None");
+		write!(out, "None")?;
 	} else {
-		println!(
+		write!(
+			out,
 			"{}",
 			reasons
 				.into_iter()
 				.map(|x| x.to_string())
 				.collect::<Vec<_>>()
 				.join(", ")
-		)
+		)?;
 	}
+
+	Ok(out)
 }
 
-pub fn cpu_throttling() -> Result<()> {
-	let msr = msr_read(1, Msr::CpuPerfLimitReasons)
-		.context("failed to read cpu throttle reasons")?;
+pub fn cpu_throttling() -> Result<String> {
+	let msr =
+		msr_read(1, Msr::CpuPerfLimitReasons).context("failed to read cpu throttle reasons")?;
 
 	let mut reasons = Vec::new();
 
@@ -78,12 +83,10 @@ pub fn cpu_throttling() -> Result<()> {
 	check!(12, MaxTurboLimit);
 	check!(13, TurboTransition);
 
-	print("CPU", reasons);
-
-	Ok(())
+	print("CPU", reasons)
 }
 
-pub fn graphics_throttling() -> Result<()> {
+pub fn graphics_throttling() -> Result<String> {
 	let msr = msr_read(1, Msr::GraphicsPerfLimitReasons)
 		.context("failed to read graphics throttle reasons")?;
 
@@ -106,17 +109,17 @@ pub fn graphics_throttling() -> Result<()> {
 	check!(10, PL1);
 	check!(11, PL2);
 
-	print("GPU", reasons);
-	if msr_get_bit(msr, 12)	{
-		println!("GPU operating below target frequency");
+	let mut out = print("GPU", reasons)?;
+	if msr_get_bit(msr, 12) {
+		write!(out, "\nGPU operating below target frequency")?;
 	}
 
-	Ok(())
+	Ok(out)
 }
 
-pub fn ring_throttling() -> Result<()> {
-	let msr = msr_read(1, Msr::RingPerfLimitReasons)
-		.context("failed to read ring throttle reasons")?;
+pub fn ring_throttling() -> Result<String> {
+	let msr =
+		msr_read(1, Msr::RingPerfLimitReasons).context("failed to read ring throttle reasons")?;
 
 	let mut reasons = Vec::new();
 
@@ -137,7 +140,5 @@ pub fn ring_throttling() -> Result<()> {
 	check!(10, PL1);
 	check!(11, PL2);
 
-	print("Ring", reasons);
-
-	Ok(())
+	print("Ring", reasons)
 }
