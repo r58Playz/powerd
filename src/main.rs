@@ -55,6 +55,7 @@ enum Action {
 }
 
 #[derive(Parser)]
+/// Intel laptop cooling/CPU tweaking tool
 enum Cli {
 	#[clap(flatten)]
 	Action(Action),
