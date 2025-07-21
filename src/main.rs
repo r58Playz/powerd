@@ -26,6 +26,7 @@ mod msr;
 mod sensors;
 mod sysfs;
 mod upower;
+mod ppd;
 
 #[derive(ValueEnum, Copy, Clone, Deserialize, Serialize)]
 enum ThrottleTarget {

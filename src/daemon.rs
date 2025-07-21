@@ -5,7 +5,10 @@ use std::{
 		unix::net::{SocketAddr, UnixListener, UnixStream},
 	},
 	path::{Path, PathBuf},
-	sync::{Arc, Mutex},
+	sync::{
+		Arc, Mutex,
+		mpsc::{RecvTimeoutError, Sender, channel},
+	},
 	time::Duration,
 };
 
@@ -15,6 +18,7 @@ use serde::Deserialize;
 
 use crate::{
 	Action, ThrottleTarget,
+	ppd::{PowerProfilesDaemon, PpdProfile},
 	sensors::{
 		SensorConfig, SensorInfo,
 		throttle::{cpu_throttling, graphics_throttling, ring_throttling},
@@ -23,35 +27,61 @@ use crate::{
 };
 
 #[derive(Clone, Deserialize)]
-struct DefaultProfiles {
-	ac: PathBuf,
-	battery: PathBuf,
+pub struct DefaultProfiles {
+	pub ac: PathBuf,
+	pub battery: PathBuf,
+}
+#[derive(Clone, Deserialize)]
+pub struct PowerProfilesDaemonProfiles {
+	#[serde(rename = "power-saver")]
+	pub powersave: PathBuf,
+	pub balanced: PathBuf,
+	pub performance: PathBuf,
 }
 
 #[derive(Clone, Deserialize)]
 pub struct DaemonConfig {
-	profiles: PathBuf,
-	default: Option<DefaultProfiles>,
-	poll_frequency: Option<u64>,
+	pub profiles: PathBuf,
+	pub default: Option<DefaultProfiles>,
+	pub ppd: PowerProfilesDaemonProfiles,
+	pub poll_frequency: Option<u64>,
 }
 
-struct CurrentProfile {
-	cfg: SensorConfig,
-	path: PathBuf,
+pub struct ProfileInfo {
+	pub cfg: SensorConfig,
+	pub path: PathBuf,
 }
 
-type CurrentState = Arc<Mutex<Option<CurrentProfile>>>;
+pub struct CurrentProfile {
+	pub held: Option<ProfileInfo>,
+	pub manual: Option<ProfileInfo>,
+	pub ppd_profile: PpdProfile,
+	pub ppd_set: bool,
+}
+impl CurrentProfile {
+	pub fn get_override(&self) -> Option<&ProfileInfo> {
+		self.held.as_ref().or(self.manual.as_ref())
+	}
+}
 
-fn apply_cfg_from_file(profiles: &Path, path: &Path) -> Result<CurrentProfile> {
+pub type CurrentState = Arc<Mutex<CurrentProfile>>;
+
+fn read_cfg(profiles: &Path, path: &Path) -> Result<ProfileInfo> {
 	let path = profiles.join(path);
 	let cfg: SensorConfig = serde_json::from_str(
 		&std::fs::read_to_string(&path).context("failed to read config file")?,
 	)
 	.context("failed to deserialize config")?;
 
-	apply_cfg(&cfg)?;
+	Ok(ProfileInfo { cfg, path })
+}
 
-	Ok(CurrentProfile { cfg, path })
+pub fn apply_cfg_from_file(profiles: &Path, path: &Path) -> Result<ProfileInfo> {
+	let info = read_cfg(profiles, path)?;
+
+	apply_cfg(&info.cfg)?;
+
+	Ok(info)
 }
 
 fn apply_cfg(cfg: &SensorConfig) -> Result<()> {
@@ -62,44 +92,79 @@ fn apply_cfg(cfg: &SensorConfig) -> Result<()> {
 }
 
 pub fn daemon(cfg: DaemonConfig) -> Result<()> {
-	let current: CurrentState = Arc::new(Mutex::new(None));
+	let current: CurrentState = Arc::new(Mutex::new(CurrentProfile {
+		held: None,
+		manual: None,
+		ppd_profile: PpdProfile::Balanced,
+		ppd_set: false,
+	}));
+
+	let (tx, rx) = channel::<()>();
+
+	let ppd = PowerProfilesDaemon::new(cfg.clone(), current.clone(), tx.clone())
+		.context("failed to start ppd polyfill")?;
 
 	let poll_frequency = cfg.poll_frequency.unwrap_or(30);
-	if poll_frequency > 0 {
-		std::thread::spawn({
-			let upower = UPowerConnection::new()?;
-			let cfg = cfg.clone();
-			let current = current.clone();
-			move || {
-				loop {
-					std::thread::sleep(Duration::from_secs(poll_frequency));
+	std::thread::spawn({
+		let upower = UPowerConnection::new()?;
+		let cfg = cfg.clone();
+		let current = current.clone();
+		let tx = tx.clone();
+		move || {
+			// immediately wake on init
+			let _ = tx.send(());
 
-					let current = current.lock().unwrap();
+			loop {
+				match rx.recv_timeout(Duration::from_secs(poll_frequency)) {
+					Ok(()) | Err(RecvTimeoutError::Timeout) => {}
+					Err(RecvTimeoutError::Disconnected) => return,
+				}
 
-					if let Some(cfg) = &*current {
-						if let Err(err) = apply_cfg(&cfg.cfg) {
-							warn!("failed to restore cfg: {err:?}");
-						}
-					} else if let Some(default) = &cfg.default {
-						match upower.query_on_battery() {
-							Ok(on_battery) => {
-								let path = if on_battery {
-									&default.battery
-								} else {
-									&default.ac
-								};
+				let mut current = current.lock().unwrap();
 
-								if let Err(err) = apply_cfg_from_file(&cfg.profiles, path) {
+				let ppd_profile = if let Some(cfg) = current.get_override() {
+					if let Err(err) = apply_cfg(&cfg.cfg) {
+						warn!("failed to restore cfg: {err:?}");
+					}
+					Some(cfg.cfg.ppd_name)
+				} else if let Some(default) = &cfg.default {
+					match upower.query_on_battery() {
+						Ok(on_battery) => {
+							let path = if on_battery {
+								&default.battery
+							} else {
+								&default.ac
+							};
+
+							match apply_cfg_from_file(&cfg.profiles, path) {
+								Ok(info) => Some(info.cfg.ppd_name),
+								Err(err) => {
 									warn!("failed to apply default config: {err:?}");
+									None
 								}
 							}
-							Err(err) => warn!("failed to ask upower for battery stats: {err:?}"),
 						}
+						Err(err) => {
+							warn!("failed to ask upower for battery stats: {err:?}");
+							None
+						}
+					}
+				} else {
+					None
+				};
+
+				if let Some(ppd_profile) = ppd_profile {
+					let old = current.ppd_profile;
+					current.ppd_profile = ppd_profile;
+					if ppd_profile != old
+						&& let Err(err) = ppd.profile_changed(ppd_profile)
+					{
+						warn!("failed to tell ppd daemon that profile changed: {err:?}");
 					}
 				}
 			}
-		});
-	}
+		}
+	});
 
 	let socket = UnixListener::bind_addr(&SocketAddr::from_abstract_name("dev.r58playz.powerd")?)?;
 
@@ -109,10 +174,11 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 				debug!("accepted connection from {addr:?} on unix socket");
 				let profiles = cfg.profiles.clone();
 				let current = current.clone();
+				let tx = tx.clone();
 				std::thread::spawn(move || {
 					debug!(
 						"handled connection from {addr:?}: {:?}",
-						client(socket, profiles, current)
+						client(socket, profiles, current, tx)
 					)
 				});
 			}
@@ -121,14 +187,19 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 	}
 }
 
-fn client(mut socket: UnixStream, profiles: PathBuf, current: CurrentState) -> Result<()> {
+fn client(
+	mut socket: UnixStream,
+	profiles: PathBuf,
+	current: CurrentState,
+	tx: Sender<()>,
+) -> Result<()> {
 	let mut buf = BufReader::new(&socket);
 	let mut str = String::new();
 	buf.read_line(&mut str)?;
 
 	let args = serde_json::from_str::<Action>(&str)?;
 
-	if let Err(err) = handle(args, &socket, &profiles, current) {
+	if let Err(err) = handle(args, &socket, &profiles, current, tx) {
 		writeln!(socket, "error from daemon: {err:?}")?;
 	}
 
@@ -140,10 +211,15 @@ fn handle(
 	mut socket: &UnixStream,
 	profiles: &Path,
 	current: CurrentState,
+	tx: Sender<()>,
 ) -> Result<()> {
 	match action {
 		Action::Info => {
-			let path = current.lock().unwrap().as_ref().map(|x| x.path.clone());
+			let path = current
+				.lock()
+				.unwrap()
+				.get_override()
+				.map(|x| x.path.clone());
 			if let Some(path) = path {
 				writeln!(socket, "Profile override: {path:?}")?;
 			} else {
@@ -159,14 +235,21 @@ fn handle(
 			)?;
 		}
 		Action::Apply { path } => {
-			let cfg = apply_cfg_from_file(profiles, &path)?;
-			current.lock().unwrap().replace(cfg);
+			let info = apply_cfg_from_file(profiles, &path)?;
+			let mut current = current.lock().unwrap();
+			current.ppd_profile = info.cfg.ppd_name;
+			current.ppd_set = false;
+			current.manual.replace(info);
+			current.held.take();
+			drop(current);
+			let _ = tx.send(());
 
 			let info = SensorInfo::read()?;
 			writeln!(socket, "{info}")?;
 		}
 		Action::Restore => {
-			current.lock().unwrap().take();
+			current.lock().unwrap().manual.take();
+			let _ = tx.send(());
 		}
 		Action::ThrottleInfo { targets } => {
 			for target in targets {

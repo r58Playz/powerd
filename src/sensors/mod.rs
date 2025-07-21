@@ -7,7 +7,7 @@ use intel_pstate::{PstateConfig, PstateInfo};
 use intel_rapl::{RaplZoneConfig, RaplZoneInfo};
 use serde::{Deserialize, Serialize};
 
-use crate::sensors::intel_dptf::{DptfConfig, DptfInfo};
+use crate::{ppd::PpdProfile, sensors::intel_dptf::{DptfConfig, DptfInfo}};
 
 pub mod cooling_profile;
 pub mod intel_dptf;
@@ -82,6 +82,7 @@ pub struct SensorConfig {
 	pub pstate: PstateConfig,
 	pub gpus: Vec<GpuConfig>,
 	pub cooling: CoolingProfileConfig,
+	pub ppd_name: PpdProfile,
 }
 impl SensorConfig {
 	pub fn apply(&self, info: &mut SensorInfo) -> Result<()> {
@@ -110,6 +111,7 @@ impl From<SensorInfo> for SensorConfig {
 			pstate: value.pstate.into(),
 			gpus: value.gpus.into_iter().map(Into::into).collect(),
 			cooling: value.cooling.into(),
+			ppd_name: PpdProfile::Balanced,
 		}
 	}
 }
