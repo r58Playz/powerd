@@ -100,7 +100,7 @@ impl RaplZoneInfo {
 		}
 
 		Ok(Some(Self {
-			name: sysfs_read(&zone_path.join("name"))?,
+			name: format!("{zone_name} {}", sysfs_read::<String>(&zone_path.join("name"))?),
 			path: zone_path,
 			constraints,
 			subzones,
@@ -121,6 +121,7 @@ impl RaplZoneInfo {
 
 	pub fn read_all() -> Result<Vec<Self>> {
 		let root = Path::new("devices/virtual/powercap/intel-rapl/");
+		let mmio_root = Path::new("devices/virtual/powercap/intel-rapl-mmio/");
 
 		let mut zones = Vec::new();
 		while let Some(subzone) =
@@ -128,6 +129,15 @@ impl RaplZoneInfo {
 		{
 			zones.push(subzone);
 		}
+
+		let mut mmio_zones = Vec::new();
+		while let Some(subzone) =
+			RaplZoneInfo::read_zone(mmio_root.join(format!("intel-rapl-mmio:{}", mmio_zones.len())))?
+		{
+			mmio_zones.push(subzone);
+		}
+
+		zones.extend_from_slice(&mmio_zones);
 
 		Ok(zones)
 	}
