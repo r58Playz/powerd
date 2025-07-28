@@ -9,13 +9,18 @@ use crate::sysfs::{sysfs_read, sysfs_write};
 pub struct CoolingProfileInfo(String);
 impl CoolingProfileInfo {
 	pub fn read() -> Result<Self> {
-		Ok(Self(sysfs_read(Path::new(
-			"firmware/acpi/platform_profile",
-		))?))
+		Ok(Self(
+			sysfs_read(Path::new("firmware/acpi/platform_profile"))
+				.unwrap_or_else(|_| "unknown".to_string()),
+		))
 	}
 
 	pub fn write(&self) -> Result<()> {
-		sysfs_write(Path::new("firmware/acpi/platform_profile"), &self.0)
+		if &self.0 != "unknown" {
+			sysfs_write(Path::new("firmware/acpi/platform_profile"), &self.0)
+		} else {
+			Ok(())
+		}
 	}
 }
 impl Display for CoolingProfileInfo {
