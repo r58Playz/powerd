@@ -15,7 +15,7 @@ use dbus::{
 	arg::Variant, blocking::Connection, channel::{MatchingReceiver, Sender}, message::MatchRule, strings::BusName, Message, MethodErr
 };
 use dbus_crossroads::{Crossroads, IfaceBuilder};
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 use crate::daemon::{CurrentState, DaemonConfig, PowerProfilesDaemonProfiles, apply_cfg_from_file};
@@ -158,6 +158,8 @@ impl PpdState {
 			bail!("balanced profile not allowed to be held");
 		}
 
+		info!("application {application_id:?} held profile {profile} for reason {reason:?}");
+
 		self.holds.push(ProfileHold {
 			cookie,
 			profile,
@@ -200,6 +202,8 @@ impl PpdState {
 		} else {
 			current.manual.replace(state);
 		}
+
+		info!("ppd profile {profile} set: external {external} from_hold {from_hold}");
 
 		self.ppd
 			.send(PpdMessage::ProfileChanged {
@@ -299,7 +303,7 @@ impl PowerProfilesDaemon {
 								Ok(x) => x,
 								Err(_) => return Err(MethodErr::invalid_arg(&profile)),
 							};
-							match state.lock().unwrap().set_profile(parsed, false, true) {
+							match state.lock().unwrap().set_profile(parsed, false, false) {
 								Ok(()) => Ok(Some(profile)),
 								Err(err) => Err(MethodErr::failed(&err)),
 							}

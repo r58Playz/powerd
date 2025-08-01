@@ -75,7 +75,7 @@ impl Display for SensorInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct SensorConfig {
 	pub rapl: Vec<RaplZoneConfig>,
 	pub dptf: DptfConfig,

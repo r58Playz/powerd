@@ -161,7 +161,7 @@ impl Display for PstateInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct PstateCpuConfig {
 	pub ids: Vec<usize>,
 	pub governor: String,
@@ -207,7 +207,7 @@ impl From<PstateCpuInfo> for PstateCpuConfig {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct PstateConfig {
 	pub cpus: Vec<PstateCpuConfig>,
 	pub turbo: bool,

@@ -33,7 +33,7 @@ impl Display for DptfInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct DptfConfig {
 	tcc_offset: u64,
 }

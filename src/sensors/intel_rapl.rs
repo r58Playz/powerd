@@ -164,7 +164,7 @@ impl Display for RaplZoneInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct RaplConstraintConfig {
 	pub id: usize,
 	pub power_limit: Option<u64>,
@@ -197,7 +197,7 @@ impl From<RaplConstraintInfo> for RaplConstraintConfig {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct RaplZoneConfig {
 	pub name: String,
 	pub constraints: Vec<RaplConstraintConfig>,

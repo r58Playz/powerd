@@ -84,7 +84,7 @@ impl Display for GpuInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct GpuConfig {
 	pub id: usize,
 	pub min_freq: u64,

@@ -29,7 +29,7 @@ impl Display for CoolingProfileInfo {
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct CoolingProfileConfig(String);
 impl CoolingProfileConfig {
 	pub fn apply(&self, info: &mut CoolingProfileInfo) -> Result<()> {

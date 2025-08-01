@@ -47,6 +47,7 @@ pub struct DaemonConfig {
 	pub poll_frequency: Option<u64>,
 }
 
+#[derive(Eq, PartialEq, Clone)]
 pub struct ProfileInfo {
 	pub cfg: SensorConfig,
 	pub path: PathBuf,
@@ -114,6 +115,9 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 			// immediately wake on init
 			let _ = tx.send(());
 
+			let mut manual = None;
+			let mut held = None;
+
 			loop {
 				match rx.recv_timeout(Duration::from_secs(poll_frequency)) {
 					Ok(()) | Err(RecvTimeoutError::Timeout) => {}
@@ -153,12 +157,16 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 					None
 				};
 
-				if let Some(ppd_profile) = ppd_profile {
-					let old = current.ppd_profile;
+				if (manual != current.manual || held != current.held)
+					&& let Some(ppd_profile) = ppd_profile
+				{
 					current.ppd_profile = ppd_profile;
-					if ppd_profile != old
-						&& let Err(err) = ppd.profile_changed(ppd_profile)
-					{
+					manual.clone_from(&current.manual);
+					held.clone_from(&current.held);
+
+					drop(current);
+
+					if let Err(err) = ppd.profile_changed(ppd_profile) {
 						warn!("failed to tell ppd daemon that profile changed: {err:?}");
 					}
 				}
@@ -215,16 +223,21 @@ fn handle(
 ) -> Result<()> {
 	match action {
 		Action::Info => {
-			let path = current
-				.lock()
-				.unwrap()
-				.get_override()
-				.map(|x| x.path.clone());
-			if let Some(path) = path {
-				writeln!(socket, "Profile override: {path:?}")?;
+			let current = current.lock().unwrap();
+			let held = current.held.as_ref().map(|x| x.path.clone());
+			let manual = current.manual.as_ref().map(|x| x.path.clone());
+
+			if let Some(path) = held {
+				writeln!(socket, "PPD held profile: {path:?}")?;
 			} else {
-				writeln!(socket, "No profile override set")?;
+				writeln!(socket, "No PPD held profile")?;
 			}
+			if let Some(path) = manual {
+				writeln!(socket, "Manual profile override: {path:?}")?;
+			} else {
+				writeln!(socket, "No manual profile override set")?;
+			}
+
 			writeln!(socket, "\n{}", SensorInfo::read()?)?;
 		}
 		Action::Dump => {
