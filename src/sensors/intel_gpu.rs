@@ -44,6 +44,9 @@ impl GpuInfo {
 		while let Some(gpu) = Self::read(gpus.len())? {
 			gpus.push(gpu);
 		}
+		if gpus.is_empty() && let Some(gpu) = Self::read(1)? {
+			gpus.push(gpu);
+		}
 
 		Ok(gpus)
 	}

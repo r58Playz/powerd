@@ -73,6 +73,7 @@ impl Display for RaplConstraintInfo {
 pub struct RaplZoneInfo {
 	pub path: PathBuf,
 	pub name: String,
+	pub enabled: bool,
 	pub constraints: Vec<RaplConstraintInfo>,
 	pub subzones: Vec<RaplZoneInfo>,
 }
@@ -100,7 +101,11 @@ impl RaplZoneInfo {
 		}
 
 		Ok(Some(Self {
-			name: format!("{zone_name} {}", sysfs_read::<String>(&zone_path.join("name"))?),
+			name: format!(
+				"{zone_name} {}",
+				sysfs_read::<String>(&zone_path.join("name"))?
+			),
+			enabled: sysfs_read::<usize>(&zone_path.join("enabled"))? == 1,
 			path: zone_path,
 			constraints,
 			subzones,
@@ -108,6 +113,8 @@ impl RaplZoneInfo {
 	}
 
 	pub fn write(&self) -> Result<()> {
+		sysfs_write(&self.path.join("enabled"), if self.enabled { 1 } else { 0 })?;
+
 		for constraint in &self.constraints {
 			constraint.write(&self.path)?;
 		}
@@ -131,9 +138,9 @@ impl RaplZoneInfo {
 		}
 
 		let mut mmio_zones = Vec::new();
-		while let Some(subzone) =
-			RaplZoneInfo::read_zone(mmio_root.join(format!("intel-rapl-mmio:{}", mmio_zones.len())))?
-		{
+		while let Some(subzone) = RaplZoneInfo::read_zone(
+			mmio_root.join(format!("intel-rapl-mmio:{}", mmio_zones.len())),
+		)? {
 			mmio_zones.push(subzone);
 		}
 
@@ -146,8 +153,9 @@ impl Display for RaplZoneInfo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		writeln!(
 			f,
-			"Zone \"{}\": {} constraints, {} subzones",
+			"Zone \"{}\" (enabled {}): {} constraints, {} subzones",
 			self.name,
+			self.enabled,
 			self.constraints.len(),
 			self.subzones.len()
 		)?;
@@ -200,6 +208,7 @@ impl From<RaplConstraintInfo> for RaplConstraintConfig {
 #[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub struct RaplZoneConfig {
 	pub name: String,
+	pub enabled: bool,
 	pub constraints: Vec<RaplConstraintConfig>,
 	pub subzones: Vec<RaplZoneConfig>,
 }
@@ -209,6 +218,8 @@ impl RaplZoneConfig {
 			.iter_mut()
 			.find(|x| x.name == self.name)
 			.with_context(|| format!("failed to find zone with name {}", self.name))?;
+
+		zone_info.enabled = self.enabled;
 
 		for zone in &self.subzones {
 			zone.apply(&mut zone_info.subzones)?;
@@ -225,6 +236,7 @@ impl From<RaplZoneInfo> for RaplZoneConfig {
 	fn from(value: RaplZoneInfo) -> Self {
 		Self {
 			name: value.name,
+			enabled: value.enabled,
 			constraints: value.constraints.into_iter().map(Into::into).collect(),
 			subzones: value.subzones.into_iter().map(Into::into).collect(),
 		}

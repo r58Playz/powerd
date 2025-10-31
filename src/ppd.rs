@@ -376,7 +376,7 @@ impl PowerProfilesDaemon {
 						if let Some(holder) = current
 							.holds
 							.iter()
-							.find(|x| x.sender == name.as_str().into())
+							.find(|x| x.sender == BusName::from(name.as_str()))
 							.map(|x| x.cookie) && let Err(err) = current.release_profile(holder)
 						{
 							warn!("failed to release profile after client left: {err:?}");
