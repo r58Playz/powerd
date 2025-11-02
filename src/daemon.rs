@@ -157,17 +157,23 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 					None
 				};
 
-				if (manual != current.manual || held != current.held)
-					&& let Some(ppd_profile) = ppd_profile
-				{
-					current.ppd_profile = ppd_profile;
+				// Check if state changed (override added/removed/changed)
+				let state_changed = manual != current.manual || held != current.held;
+
+				if state_changed {
 					manual.clone_from(&current.manual);
 					held.clone_from(&current.held);
 
-					drop(current);
+					if let Some(ppd_profile) = ppd_profile {
+						current.ppd_profile = ppd_profile;
+						current.ppd_set = false; // Mark as externally changed
+						drop(current);
 
-					if let Err(err) = ppd.profile_changed(ppd_profile) {
-						warn!("failed to tell ppd daemon that profile changed: {err:?}");
+						if let Err(err) = ppd.profile_changed(ppd_profile) {
+							warn!("failed to tell ppd daemon that profile changed: {err:?}");
+						}
+					} else {
+						drop(current);
 					}
 				}
 			}

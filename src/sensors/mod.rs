@@ -7,7 +7,10 @@ use intel_pstate::{PstateConfig, PstateInfo};
 use intel_rapl::{RaplZoneConfig, RaplZoneInfo};
 use serde::{Deserialize, Serialize};
 
-use crate::{ppd::PpdProfile, sensors::intel_dptf::{DptfConfig, DptfInfo}};
+use crate::{
+	ppd::PpdProfile,
+	sensors::intel_dptf::{DptfConfig, DptfInfo},
+};
 
 pub mod cooling_profile;
 pub mod intel_dptf;

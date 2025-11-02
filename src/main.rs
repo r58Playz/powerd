@@ -23,10 +23,10 @@ use crate::{
 
 mod daemon;
 mod msr;
+mod ppd;
 mod sensors;
 mod sysfs;
 mod upower;
-mod ppd;
 
 #[derive(ValueEnum, Copy, Clone, Deserialize, Serialize)]
 enum ThrottleTarget {

@@ -12,7 +12,12 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use dbus::{
-	arg::Variant, blocking::Connection, channel::{MatchingReceiver, Sender}, message::MatchRule, strings::BusName, Message, MethodErr
+	Message, MethodErr,
+	arg::Variant,
+	blocking::Connection,
+	channel::{MatchingReceiver, Sender},
+	message::MatchRule,
+	strings::BusName,
 };
 use dbus_crossroads::{Crossroads, IfaceBuilder};
 use log::{info, warn};
@@ -90,7 +95,10 @@ impl ProfileHold {
 	fn ser(&self) -> HashMap<String, Variant<String>> {
 		let mut map = HashMap::with_capacity(3);
 
-		map.insert("ApplicationId".to_string(), Variant(self.application_id.clone()));
+		map.insert(
+			"ApplicationId".to_string(),
+			Variant(self.application_id.clone()),
+		);
 		map.insert("Profile".to_string(), Variant(self.profile.to_string()));
 		map.insert("Reason".to_string(), Variant(self.reason.clone()));
 
@@ -134,8 +142,11 @@ impl PpdState {
 		if let Some(target) = target {
 			self.set_profile(target, true, true)?;
 		} else {
+			// All holds released - clear held state and reset ppd_set flag
+			// so that manual/default profile can take over
 			let mut current = self.state.lock().unwrap();
 			current.held.take();
+			current.ppd_set = false;
 			drop(current);
 
 			self.daemon.send(()).context("failed to notify daemon")?;
@@ -186,8 +197,18 @@ impl PpdState {
 		Ok(())
 	}
 
-	fn get_profile(&mut self) -> PpdProfile {
-		self.state.lock().unwrap().ppd_profile
+	fn get_profile(&self) -> PpdProfile {
+		let state = self.state.lock().unwrap();
+		if state.ppd_set {
+			state.ppd_profile
+		} else {
+			// Profile was changed externally (via manual apply or default profile switch)
+			// Return the actual profile that's currently applied
+			state
+				.get_override()
+				.map(|info| info.cfg.ppd_name)
+				.unwrap_or(state.ppd_profile)
+		}
 	}
 
 	fn set_profile(&mut self, profile: PpdProfile, external: bool, from_hold: bool) -> Result<()> {
@@ -201,7 +222,10 @@ impl PpdState {
 			current.held.replace(state);
 		} else {
 			current.manual.replace(state);
+			// When manually setting profile, clear all holds immediately
+			self.holds.clear();
 		}
+		drop(current);
 
 		info!("ppd profile {profile} set: external {external} from_hold {from_hold}");
 
@@ -297,7 +321,9 @@ impl PowerProfilesDaemon {
 
 				changed_fn.replace(
 					b.property("ActiveProfile")
-						.get(|_, state| Ok(state.lock().unwrap().get_profile().to_string()))
+						.get(|_, ppd_state| {
+							Ok(ppd_state.lock().unwrap().get_profile().to_string())
+						})
 						.set(|_, state, profile| {
 							let parsed = match PpdProfile::from_str(&profile) {
 								Ok(x) => x,

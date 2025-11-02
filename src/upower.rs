@@ -19,8 +19,10 @@ impl UPowerConnection {
 			Duration::from_secs(1),
 		);
 
-        let on_battery: bool = proxy.get("org.freedesktop.UPower", "OnBattery").context("failed to get org.freedesktop.UPower OnBattery")?;
+		let on_battery: bool = proxy
+			.get("org.freedesktop.UPower", "OnBattery")
+			.context("failed to get org.freedesktop.UPower OnBattery")?;
 
-        Ok(on_battery)
+		Ok(on_battery)
 	}
 }
