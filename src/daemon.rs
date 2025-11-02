@@ -267,7 +267,10 @@ fn handle(
 			writeln!(socket, "{info}")?;
 		}
 		Action::Restore => {
-			current.lock().unwrap().manual.take();
+			let mut current = current.lock().unwrap();
+			current.manual.take();
+			current.ppd_set = false;
+			drop(current);
 			let _ = tx.send(());
 		}
 		Action::ThrottleInfo { targets } => {

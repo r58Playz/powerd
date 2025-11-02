@@ -237,6 +237,9 @@ impl PpdState {
 			})
 			.context("failed to tell daemon profile changed")?;
 
+		// Notify daemon thread to update its state tracking
+		let _ = self.daemon.send(());
+
 		Ok(())
 	}
 }
