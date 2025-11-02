@@ -324,9 +324,7 @@ impl PowerProfilesDaemon {
 
 				changed_fn.replace(
 					b.property("ActiveProfile")
-						.get(|_, ppd_state| {
-							Ok(ppd_state.lock().unwrap().get_profile().to_string())
-						})
+						.get(|_, ppd_state| Ok(ppd_state.lock().unwrap().get_profile().to_string()))
 						.set(|_, state, profile| {
 							let parsed = match PpdProfile::from_str(&profile) {
 								Ok(x) => x,

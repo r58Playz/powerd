@@ -117,6 +117,7 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 
 			let mut manual = None;
 			let mut held = None;
+			let mut last_ppd_profile = PpdProfile::Balanced;
 
 			loop {
 				match rx.recv_timeout(Duration::from_secs(poll_frequency)) {
@@ -160,13 +161,16 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 				// Check if state changed (override added/removed/changed)
 				let state_changed = manual != current.manual || held != current.held;
 
-				if state_changed {
-					manual.clone_from(&current.manual);
-					held.clone_from(&current.held);
+				if let Some(ppd_profile) = ppd_profile {
+					let profile_changed = ppd_profile != last_ppd_profile;
 
-					if let Some(ppd_profile) = ppd_profile {
+					if state_changed || profile_changed {
+						manual.clone_from(&current.manual);
+						held.clone_from(&current.held);
+						last_ppd_profile = ppd_profile;
+
 						current.ppd_profile = ppd_profile;
-						current.ppd_set = false; // Mark as externally changed
+						current.ppd_set = false;
 						drop(current);
 
 						if let Err(err) = ppd.profile_changed(ppd_profile) {
@@ -175,6 +179,12 @@ pub fn daemon(cfg: DaemonConfig) -> Result<()> {
 					} else {
 						drop(current);
 					}
+				} else if state_changed {
+					manual.clone_from(&current.manual);
+					held.clone_from(&current.held);
+					drop(current);
+				} else {
+					drop(current);
 				}
 			}
 		}
