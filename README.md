@@ -12,3 +12,10 @@ Intel laptop cooling/CPU tweaking tool that supports power-profiles-daemon APIs.
 5. Write a `powerd.json` based off `DaemonConfig` in `src/daemon.rs`
 6. Install and edit `powerd.service` to point to your powerd binary installation and configuration file location
 7. Enable/start `powerd.service`
+
+## Notes
+
+### DPTF UUIDs
+The DPTF UUIDs are stored in the GDDV data_vault at `/sys/bus/platform/drivers/int3400\ thermal/*/data_vault`.
+The best way to figure out which one to use is to run `thermald --no-daemon --adaptive --loglevel=info` and look through the logs, since it dumps the whole data_vault.
+Even just using the `[INFO]Set Default UUID: ` can reduce throttling in my experience.
